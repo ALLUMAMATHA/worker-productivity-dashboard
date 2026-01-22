@@ -135,4 +135,20 @@ AI systems may resend the same event.
 Tradeoff:
 *  Strong consistency
 
+# Intermittent connectivity (how we handle it)
+
+Cameras and edge devices can lose network connectivity or have flaky links. The system is designed to be resilient to these real-world conditions:
+
+1. Local buffering and batch retry (edge-friendly)
+Cameras / edge agents should buffer events locally for short intervals (e.g. 1–10s) and send them in batches using POST /events/bulk. If the network is down, the edge retries with exponential backoff and preserves the batch order. Batching reduces HTTP overhead and makes retries efficient.
+
+2. Idempotency and deduplication
+Events are de-duplicated on ingest using a deterministic event key and a database unique constraint on (worker_id, workstation_id, timestamp, event_type, count). The service checks for existence before saving and treats DataIntegrityViolationException as a benign duplicate. This allows safe retries from the edge without risk of double-counting.
+
+3. Last-known-state persists (conservative model)
+If events are delayed, the backend treats the last received state as continuing until a newer event arrives. This conservative approach avoids overstating activity during network gaps. A rolling window option (configurable) can be used to avoid very old states dominating UI visuals.
+
+4. Ordering & out-of-order handling
+Events are sorted by timestamp at metric-computation time so minor out-of-order arrivals do not corrupt metrics. For large reordering risks, include a sequence number or camera timestamp in the event payload so the edge can preserve ordering before sending.
+
 
